@@ -3,6 +3,7 @@ import time
 from typing import Dict, Union
 
 import anthropic
+import httpx
 import openai
 import tiktoken
 
@@ -62,7 +63,7 @@ def request_chatgpt_engine(config, logger, base_url=None, max_retries=40, timeou
     retries = 0
 
     base_url = os.environ.get('OPENAI_BASE_URL')
-    client = openai.OpenAI(base_url=base_url)
+    client = openai.OpenAI(base_url=base_url, http_client=httpx.Client(trust_env=False))
 
     while ret is None and retries < max_retries:
         try:

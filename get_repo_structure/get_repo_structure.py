@@ -12,8 +12,14 @@ from tree_sitter import Language, Parser, Node
 import tree_sitter_cpp as tscpp
 import tree_sitter_go as tsgo
 import tree_sitter_java as tsjava
-import tree_sitter_typescript as tsts
 import tree_sitter_rust as tsrust
+
+try:
+    import tree_sitter_javascript as tsjs
+except ImportError:
+    tsjs = None
+
+import tree_sitter_typescript as tsts
 
 repo_to_top_folder = {
     # Python
@@ -526,27 +532,30 @@ def parse_cpp_file(file_path, file_content=None):
     return class_info, function_names, file_content.splitlines()
 
 
+def _get_ts_parser(language_fn):
+    return Parser(Language(language_fn()))
+
+
 def parse_typescript_file(file_path, file_content=None):
-    """Parse a Typescript file to extract interface definitions and class definitions with their line numbers.
-    :param file_path: Path to the Java file.
+    """Parse a Typescript file to extract class and function definitions.
+    :param file_path: Path to the file.
     :return: Class names, function names, and file contents
     """
-    parser = Parser(Language(tsts.language_typescript()))
+    parser = _get_ts_parser(tsts.language_typescript)
 
     if file_content is None:
         try:
             with open(file_path, "r") as file:
                 file_content = file.read()
-                tree = parser.parse(bytes(file_content, "utf-8"))
-        except Exception as e:  # Catch all types of exceptions
+        except Exception as e:
             print(f"Error in file {file_path}: {e}")
             return [], [], ""
-    else:
-        try:
-            tree = parser.parse(bytes(file_content, "utf-8"))
-        except Exception as e:  # Catch all types of exceptions
-            print(f"Error in file {file_path}: {e}")
-            return [], [], ""
+
+    try:
+        tree = parser.parse(bytes(file_content, "utf-8"))
+    except Exception as e:
+        print(f"Error in file {file_path}: {e}")
+        return [], [], ""
 
     class_info = []
     function_names = []
@@ -585,6 +594,71 @@ def parse_typescript_file(file_path, file_content=None):
                 'text': node.text.decode('utf-8').splitlines(),
             })
             arrow_function_idx = arrow_function_idx + 1
+
+    return class_info, function_names, file_content.splitlines()
+
+
+def parse_javascript_file(file_path, file_content=None):
+    """Parse a JavaScript file to extract class and function definitions.
+    :param file_path: Path to the file.
+    :return: Class names, function names, and file contents
+    """
+    if tsjs is not None:
+        parser = _get_ts_parser(tsjs.language)
+    else:
+        parser = _get_ts_parser(tsts.language_javascript)
+
+    if file_content is None:
+        try:
+            with open(file_path, "r") as file:
+                file_content = file.read()
+        except Exception as e:
+            print(f"Error in file {file_path}: {e}")
+            return [], [], ""
+
+    try:
+        tree = parser.parse(bytes(file_content, "utf-8"))
+    except Exception as e:
+        print(f"Error in file {file_path}: {e}")
+        return [], [], ""
+
+    class_info = []
+    function_names = []
+    arrow_function_idx = 0
+
+    for node in traverse(tree.root_node):
+        if node.type == 'class_declaration':
+            methods = []
+            class_info.append({
+                'name': node.child_by_field_name('name').text.decode('utf-8'),
+                'start_line': node.start_point.row,
+                'end_line': node.end_point.row,
+                'text': node.text.decode('utf-8').splitlines(),
+                'methods': methods,
+            })
+            for child in traverse(node):
+                if child.type == 'method_definition':
+                    methods.append({
+                        'name': child.child_by_field_name('name').text.decode('utf-8'),
+                        'start_line': child.start_point.row,
+                        'end_line': child.end_point.row,
+                        'text': child.text.decode('utf-8').splitlines(),
+                    })
+        elif node.type == 'function_declaration':
+            function_names.append({
+                'name': node.child_by_field_name('name').text.decode('utf-8'),
+                'start_line': node.start_point.row,
+                'end_line': node.end_point.row,
+                'text': node.text.decode('utf-8').splitlines(),
+            })
+        elif node.type == 'arrow_function':
+            function_names.append({
+                'name': f'arrow_function_{arrow_function_idx}',
+                'start_line': node.start_point.row,
+                'end_line': node.end_point.row,
+                'text': node.text.decode('utf-8').splitlines(),
+            })
+            arrow_function_idx += 1
 
     return class_info, function_names, file_content.splitlines()
 
@@ -661,7 +735,10 @@ def create_structure(directory_path):
                 }
             elif check_file_ext(file_name, 'typescript'):
                 file_path = os.path.join(root, file_name)
-                class_info, function_names, file_lines = parse_typescript_file(file_path)
+                if file_name.lower().endswith('.js'):
+                    class_info, function_names, file_lines = parse_javascript_file(file_path)
+                else:
+                    class_info, function_names, file_lines = parse_typescript_file(file_path)
                 curr_struct[file_name] = {
                     "classes": class_info,
                     "functions": function_names,

@@ -14,82 +14,96 @@ from agentless.util.preprocess_data import (
     filter_out_test_files,
     get_repo_structure,
 )
-from agentless.util.utils import load_json, load_jsonl, setup_logger
+from agentless.util.utils import load_jsonl, setup_logger
 
 
 def retrieve_locs(bug, args, swe_bench_data, found_files, prev_o, write_lock=None):
 
-    found = False
-    for o in prev_o:
-        if o["instance_id"] == bug["instance_id"]:
-            found = True
-            break
-
-    if found:
-        logger.info(f"skipping {bug['instance_id']} since patch already generated")
-        return None
-
     instance_id = bug["instance_id"]
-
-    if args.target_id is not None:
-        if args.target_id != instance_id:
-            return None
-
     log_file = os.path.join(args.output_folder, "retrieval_logs", f"{instance_id}.log")
     logger = setup_logger(log_file)
-    logger.info(f"Processing bug {instance_id}")
 
-    bench_data = [x for x in swe_bench_data if x["instance_id"] == instance_id][0]
-    problem_statement = bench_data["problem_statement"]
-    structure = get_repo_structure(
-        instance_id, bug["repo"], bug["base_commit"], "playground"
-    )
+    def write_output(payload):
+        if write_lock is not None:
+            write_lock.acquire()
+        try:
+            with open(args.output_file, "a") as f:
+                f.write(json.dumps(payload) + "\n")
+        finally:
+            if write_lock is not None:
+                write_lock.release()
 
-    filter_none_python(structure)
-    filter_out_test_files(structure)
+    try:
+        found = False
+        for o in prev_o:
+            if o["instance_id"] == bug["instance_id"]:
+                found = True
+                break
 
-    if args.filter_file:
-        kwargs = {  # build retrieval kwargs
-            "given_files": [x for x in found_files if x["instance_id"] == instance_id][
-                0
-            ]["found_files"],
-            "filter_top_n": args.filter_top_n,
-        }
-    else:
-        kwargs = {}
+        if found:
+            logger.info(f"skipping {bug['instance_id']} since patch already generated")
+            return None
 
-    # main retrieval
-    retriever = EmbeddingIndex(
-        instance_id,
-        structure,
-        problem_statement,
-        persist_dir=args.persist_dir,
-        filter_type=args.filter_type,
-        index_type=args.index_type,
-        chunk_size=args.chunk_size,
-        chunk_overlap=args.chunk_overlap,
-        logger=logger,
-        **kwargs,
-    )
+        if args.target_id is not None:
+            if args.target_id != instance_id:
+                return None
 
-    file_names, meta_infos, traj = retriever.retrieve(mock=args.mock)
+        logger.info(f"Processing bug {instance_id}")
 
-    if write_lock is not None:
-        write_lock.acquire()
-    with open(args.output_file, "a") as f:
-        f.write(
-            json.dumps(
-                {
-                    "instance_id": instance_id,
-                    "found_files": file_names,
-                    "node_info": meta_infos,
-                    "traj": traj,
-                }
-            )
-            + "\n"
+        bench_data = [x for x in swe_bench_data if x["instance_id"] == instance_id][0]
+        problem_statement = bench_data["problem_statement"]
+        structure = get_repo_structure(
+            instance_id, bug["repo"], bug["base_commit"], "playground"
         )
-    if write_lock is not None:
-        write_lock.release()
+
+        filter_none_python(structure)
+        filter_out_test_files(structure)
+
+        if args.filter_file:
+            kwargs = {  # build retrieval kwargs
+                "given_files": [x for x in found_files if x["instance_id"] == instance_id][
+                    0
+                ]["found_files"],
+                "filter_top_n": args.filter_top_n,
+            }
+        else:
+            kwargs = {}
+
+        # main retrieval
+        retriever = EmbeddingIndex(
+            instance_id,
+            structure,
+            problem_statement,
+            persist_dir=args.persist_dir,
+            filter_type=args.filter_type,
+            index_type=args.index_type,
+            chunk_size=args.chunk_size,
+            chunk_overlap=args.chunk_overlap,
+            logger=logger,
+            **kwargs,
+        )
+
+        file_names, meta_infos, traj = retriever.retrieve(mock=args.mock)
+        write_output(
+            {
+                "instance_id": instance_id,
+                "found_files": file_names,
+                "node_info": meta_infos,
+                "traj": traj,
+            }
+        )
+    except Exception as e:
+        logger.exception("Retrieval failed")
+        write_output(
+            {
+                "instance_id": instance_id,
+                "found_files": [],
+                "node_info": [],
+                "traj": {"usage": {"embedding_tokens": 0}},
+                "error": str(e),
+            }
+        )
+        return None
 
 
 def retrieve(args):

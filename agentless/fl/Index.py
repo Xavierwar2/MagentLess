@@ -22,7 +22,11 @@ from agentless.util.preprocess_data import (
     clean_method_left_space,
     get_full_file_paths_and_classes_and_functions,
 )
-from get_repo_structure.get_repo_structure import parse_python_file
+from get_repo_structure.get_repo_structure import (
+    parse_javascript_file,
+    parse_python_file,
+    parse_typescript_file,
+)
 
 
 def construct_file_meta_data(file_name: str, clazzes: list, functions: list) -> dict:
@@ -234,7 +238,13 @@ class EmbeddingIndex(ABC):
                     continue
 
                 # create documents
-                class_info, function_names, _ = parse_python_file(None, content)
+                if file_name.endswith(".ts"):
+                    class_info, function_names, _ = parse_typescript_file(None, content)
+                elif file_name.endswith(".js"):
+                    class_info, function_names, _ = parse_javascript_file(None, content)
+                else:
+                    class_info, function_names, _ = parse_python_file(None, content)
+
                 if self.index_type == "simple":
                     docs = build_file_documents_simple(
                         class_info, function_names, file_name, content

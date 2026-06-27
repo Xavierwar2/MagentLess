@@ -1,4 +1,5 @@
 import json
+import os
 from pathlib import Path
 
 from agentless.multilang.const import LANGUAGE, LANG_EXT
@@ -17,16 +18,23 @@ def process(raw_data):
 
 def load_local_json():
     dataset = []
-    if LANGUAGE == 'javascript':
-        lang = 'js'
-    elif LANGUAGE == 'typescript':
-        lang = 'ts'
+    local_dataset_file = os.environ.get('LOCAL_DATASET_FILE')
+    if local_dataset_file:
+        files = [Path(local_dataset_file)]
     else:
-        lang = LANGUAGE
-    path = Path(f'data/{lang}')
+        if LANGUAGE == 'javascript':
+            lang = 'js'
+        elif LANGUAGE == 'typescript':
+            lang = 'ts'
+        else:
+            lang = LANGUAGE
+        path = Path(f'data/{lang}')
+        files = sorted(path.iterdir())
+
     lines = []
-    for file in path.iterdir():
-        lines.extend(file.read_text().splitlines())
+    for file in files:
+        if file.is_file():
+            lines.extend(file.read_text().splitlines())
     dataset = [process(x) for x in lines]
     return dataset
 
