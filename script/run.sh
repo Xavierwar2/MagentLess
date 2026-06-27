@@ -1,11 +1,11 @@
 set -x
 
-# api_key.sh
-export OPENAI_API_KEY=sk-IcBy9O6Rxj51SOOHAemuRQsJOvToRQVatlpqyN3RTeqXR3uC
-export OPENAI_BASE_URL=https://api.aipaibox.com/v1
-export OPENAI_MODEL=gpt-5.4
-export OPENAI_EMBED_URL=https://api.aipaibox.com/v1/embeddings
-# source script/api_key.sh
+# 创建一个api_key.sh文件放在script目录下，文件内容按照以下格式填写：
+# export OPENAI_API_KEY=
+# export OPENAI_BASE_URL=
+# export OPENAI_MODEL=
+# export OPENAI_EMBED_URL=
+source script/api_key.sh
 
 export PYTHONPATH=`pwd`
 export TARGET_ID=
@@ -20,6 +20,7 @@ export DATASET=local_json
 export LOCAL_DATASET_FILE="data/ts/darkreader__darkreader_dataset.jsonl"
 export SPLIT=test
 
+# 需要先执行一遍：
 # mkdir -p "repo" "structure"
 # python script/generate_structure.py
 
