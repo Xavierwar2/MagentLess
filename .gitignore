@@ -193,7 +193,7 @@ logs/
 dev/
 
 # data files
-*.jsonl
+# *.jsonl
 *.json
 
 # Jupyter Notebooks

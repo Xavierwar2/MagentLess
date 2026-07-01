@@ -153,11 +153,40 @@ def modified_length(normalized_patch):
     return changed_length
 
 
+def make_prediction(instance_id, patch):
+    repo_id, number = instance_id.rsplit("-", 1)
+    org, repo = repo_id.split("__", 1)
+    return {
+        "org": org,
+        "repo": repo,
+        "number": int(number),
+        "fix_patch": patch,
+    }
+
+
+def load_allowed_instance_ids():
+    dataset_file = os.environ.get("LOCAL_DATASET_FILE")
+    if not dataset_file or not os.path.exists(dataset_file):
+        return None
+
+    allowed = set()
+    with open(dataset_file, "r", encoding="utf-8") as fin:
+        for line in fin:
+            if not line.strip():
+                continue
+            allowed.add(json.loads(line)["instance_id"])
+    return allowed
+
+
 def majority_voting(args):
 
     with open(args.output_file, "w") as f:
+        allowed_instance_ids = load_allowed_instance_ids()
 
         for instance_id in execution_results:
+            if allowed_instance_ids is not None and instance_id not in allowed_instance_ids:
+                continue
+
             if len(execution_results[instance_id]) < args.num_samples:
                 print(
                     f"There were only {len(execution_results[instance_id])} patches for {instance_id} instead of the full {args.num_samples}"
@@ -238,18 +267,10 @@ def majority_voting(args):
                         ),
                     )
                     patch = get_sample(instance_id, maj_selected_id)["patch"]
-                    result = {
-                        "model_name_or_path": "agentless",
-                        "instance_id": instance_id,
-                        "model_patch": patch,
-                    }
+                    result = make_prediction(instance_id, patch)
                 else:
                     print(f"No raw patches valid for {instance_id}")
-                    result = {
-                        "model_name_or_path": "agentless",
-                        "instance_id": instance_id,
-                        "model_patch": "",
-                    }
+                    result = make_prediction(instance_id, "")
                 f.write(json.dumps(result) + "\n")
                 continue
 
@@ -280,11 +301,7 @@ def majority_voting(args):
                     print("=" * 50)
 
             sample = get_sample(instance_id, maj_selected_id)
-            result = {
-                "model_name_or_path": "agentless",
-                "instance_id": instance_id,
-                "model_patch": sample["patch"],
-            }
+            result = make_prediction(instance_id, sample["patch"])
 
             f.write(json.dumps(result) + "\n")
 
